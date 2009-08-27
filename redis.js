@@ -22,7 +22,7 @@
 
 /**
  * UPDATED - updated Brian's code to use the node API as of
- * node version 1.7
+ * node version 0.1.7
  *
  * Also, changed the way data is received to account for partial
  * chunks in multi-bulk responses.
