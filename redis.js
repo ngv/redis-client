@@ -348,7 +348,7 @@ for (var commandName in inlineCommands)
   exports[commandName] = createCommandSender(commandName);
 
 for (var bulkCommand in bulkCommands)
-  exports[bulkCommand] = createCommandSender(commandName);
+  exports[bulkCommand] = createCommandSender(bulkCommand);
 
 // All reply handlers are passed the full received data which may contain
 // multiple replies.  Each should return [ result, offsetOfFollowingReply ]
