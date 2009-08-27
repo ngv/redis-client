@@ -20,22 +20,205 @@
 //
 // Brian Hammond, Fictorial, June 2009
 
-var conn = new node.tcp.Connection();
+/**
+ * UPDATED - updated Brian's code to use the node API as of
+ * node version 1.7
+ *
+ * Also, changed the way data is received to account for partial
+ * chunks in multi-bulk responses.
+ *
+ * Brit Gardner, http://britg.com, Aug 2009
+ **/
 
-// Connect to redis server.  This is most commonly to a redis-server instance
-// running on the same host.
+// debugMode:
+// We don't use print() or puts() immediately as they are asynchronous in Node;
+// the instant there's a runtime error raised by V8, any pending I/O in Node is
+// dropped.  Thus, we simply append to a string.  When *we* cause a runtime
+// error via throw in debugMode, we dump all output, *then* throw.  This is
+// useful for, well, debugging.  Otherwise, turn off debugMode (which is the
+// default).
+this.debugMode = false;
 
-exports.connect = function(port, host) {
-  port = port || 6379;
-  host = host || '127.0.0.1';
-
-  node.debug('connecting to ' + host + ':' + port);
-
-  conn.connect(port, host);
+function debug(data) {
+  if(exports.debugMode) {
+    node.debug(data.replace(/\r\n/g, '\\r\\n'));
+  }
 }
+
+var conn, _host, _port;
+var lastPrefix, lastHandler, lastChunk;
+
+var chunks = [];
+var callbacks = [];
 
 var CRLF = "\r\n";
 var CRLF_LENGTH = 2;
+
+/**
+ * Public interface to create a connection
+ **/
+this.connect = function(port, host) {
+  _port = port || 6379;
+  _host = host || '127.0.0.1';
+  _connect();
+};
+
+/**
+ * Create a connection to the db
+ * and assign listeners to our connection
+ * events
+ *
+ * If we created this connection as a result of a
+ * Redis command, run the command as a callback
+ * when connection is created.
+ **/
+function _connect(cb, args) {
+
+  debug("Creating a new connection!");
+
+  // clear chunks
+  chunks = [];
+
+  // clear temp storage
+  lastPrefix = lastHandler = lastChunk = null;
+
+  // create connection and set encoding to UTF8
+  conn = node.tcp.createConnection(_port, _host);
+  conn.setEncoding("utf8");
+
+  // On connect event, format command
+  // and send
+  conn.addListener("connect", function() {
+    if(typeof cb == 'function') {
+      cb.apply(exports);
+    }
+  });
+
+  // On receive data event
+  conn.addListener('receive', function(data) {
+    processChunk(data);
+  });
+}
+
+/**
+ * Process a chunk of data from Redis.
+ *
+ * NOTE: we cannot assume this chunk is a complete
+ * or tidy Redis response.  Particularly in the case of
+ * a Multi-Bulk response, this chunk may be any part of
+ * a Redis value
+ **/
+function processChunk(chunk) {
+
+  debug('< data received');
+  debug('< ' + chunk.length);
+  //debug('<<< ' + chunk);
+
+  if (chunk.length == 0) {
+    fatal("empty response");
+  }
+    
+  // Is this beginning of a Redis response?
+  var startPrefix   = chunk.charAt(0);
+  var startHandler  = replyPrefixToHandler[startPrefix];
+
+  if(startHandler) {
+    processResponseStart(startPrefix, startHandler, chunk);
+  }
+
+  // add this chunk of data to our array
+  chunks.push(chunk);
+
+  // Is this the end of a response?
+  if( chunk.substr(chunk.length -2) == CRLF ) {
+    var responseSoFar = chunks.join('');
+
+    if( allPartsReceived(responseSoFar) ) {
+      processResponseEnd(responseSoFar);
+    }
+  }
+}
+
+/**
+ * Save the response start for later, determine if
+ * we should keep track of a multi-bulk response count.
+ **/
+function processResponseStart(prefix, handler, chunk) {
+
+  // temporarily store response in case the next chunk received
+  // depends on this chunk
+  lastPrefix  = prefix;
+  lastHandler = handler;
+  lastChunk   = chunk;
+
+  // if the prefix denotes the start of a multi-bulk reply
+  // set a multiBulkCount so we know how many responses
+  // to expect and reset chunks
+  if(prefix == '*') {
+    // first CRLF
+    var firstBreak = chunk.indexOf(CRLF);
+    multiBulkCount = Number(chunk.substr(1, firstBreak));
+    debug('>> Resetting chunks.  Multibulk count is (' + multiBulkCount + ')');
+    chunks = [];
+  }
+}
+
+
+/**
+ * Do some tidying up, and apply callbacks 
+ **/
+function processResponseEnd(data) {
+
+  debug('> End of Response');
+  delete(multiBulkCount);
+
+  // clear chunks
+  chunks = [];
+
+  var offset = 0;
+  while (offset < data.length) {
+    var callback = callbacks.shift();
+    var replyPrefix = data.charAt(offset);
+    var replyHandler = replyPrefixToHandler[replyPrefix];
+
+    if (!replyHandler) {
+      debug("Reply Handler not found, using previous data!");
+      replyHandler = lastHandler;
+      data = lastChunk + data;
+
+      delete(lastHandler);
+      delete(lastChunk);
+    }
+
+    var resultInfo = replyHandler(data, offset);
+    var result = resultInfo[0];
+    offset = resultInfo[1];
+
+    if (callback && callback.cb) {
+      result = postProcessResults(callback.cmd, result);
+      callback.cb(result);
+      chunks = [];
+    }
+  }
+}
+
+/**
+ * Have we received all parts?
+ **/
+function allPartsReceived(data) {
+  if(typeof multiBulkCount != 'undefined') {
+    var size = data.split(CRLF + '$').length - 1;
+    debug('> The current response size is (' + size + ')');
+
+    if(size < multiBulkCount) {
+      debug('> We havent received all of the parts yet!');
+      return false;
+    }
+  }
+
+  return true;
+}
+
 
 // Commands supported by Redis (as of June, 2009).
 // Note: 'sort' and 'quit' are handled as special cases.
@@ -48,7 +231,7 @@ var inlineCommands = {
   lindex:1,      lpop:1,        rpop:1,        scard:1,       sinter:1,
   sinterstore:1, sunion:1,      sunionstore:1, smembers:1,    select:1,
   move:1,        flushdb:1,     flushall:1,    save:1,        bgsave:1,
-  lastsave:1,    shutdown:1,    info:1
+  lastsave:1,    shutdown:1,    info:1,        ping:1
 };
 
 var bulkCommands = {
@@ -57,30 +240,7 @@ var bulkCommands = {
   sismember:1
 };
 
-// callbacks:
-// Node is event driven / asynchronous with respect to all I/O.  Thus, we call
-// user code back when we parse Redis responses.  Note: redis responds in the
-// same order as commands are sent.  Thus, pipelining is perfectly valid.  See
-// the unit test(s) for examples of callbacks.
 
-var callbacks = [];
-
-// debugMode:
-// We don't use print() or puts() immediately as they are asynchronous in Node;
-// the instant there's a runtime error raised by V8, any pending I/O in Node is
-// dropped.  Thus, we simply append to a string.  When *we* cause a runtime
-// error via throw in debugMode, we dump all output, *then* throw.  This is
-// useful for, well, debugging.  Otherwise, turn off debugMode (which is the
-// default).
-
-exports.debugMode = false;
-
-function debug(data) {
-  if (!exports.debugMode || !data)
-    return;
-
-  node.debug(data.replace(/\r\n/g, '\\r\\n'));
-}
 
 function fatal(errorMessage) {
   debug("\n\nFATAL: " + errorMessage + "\n");
@@ -138,17 +298,26 @@ function formatBulk(commandName, commandArgs, argCount) {
 
 function createCommandSender(commandName) {
   return function() {
-    if (conn.readyState != "open") 
-      fatal("connection is not open");
+
+    var commandArgs = arguments;
+
+    if (conn.readyState != "open") {
+      debug('Connection is not open (' + conn.readyState + ')');
+      conn.close();
+      _connect(function() {
+        exports[commandName].apply(exports, commandArgs);
+      });
+      return;
+    }
 
     // last arg (if any) should be callback function.
 
     var callback = null;
-    var numArgs = arguments.length;
+    var numArgs = commandArgs.length;
 
-    if (typeof(arguments[arguments.length - 1]) == 'function') {
-      callback = arguments[arguments.length - 1];
-      numArgs = arguments.length - 1;
+    if (typeof(commandArgs[commandArgs.length - 1]) == 'function') {
+      callback = commandArgs[commandArgs.length - 1];
+      numArgs = commandArgs.length - 1;
     }
 
     // Format the command and send it.
@@ -156,9 +325,9 @@ function createCommandSender(commandName) {
     var cmd;
 
     if (inlineCommands[commandName]) {
-      cmd = formatInline(commandName, arguments, numArgs);
+      cmd = formatInline(commandName, commandArgs, numArgs);
     } else if (bulkCommands[commandName]) {
-      cmd = formatBulk(commandName, arguments, numArgs);
+      cmd = formatBulk(commandName, commandArgs, numArgs);
     } else { 
       fatal('unknown command ' + commandName);
     }
@@ -178,8 +347,8 @@ function createCommandSender(commandName) {
 for (var commandName in inlineCommands)
   exports[commandName] = createCommandSender(commandName);
 
-for (var commandName in bulkCommands)
-  exports[commandName] = createCommandSender(commandName);
+for (var bulkCommand in bulkCommands)
+  exports[bulkCommand] = createCommandSender(commandName);
 
 // All reply handlers are passed the full received data which may contain
 // multiple replies.  Each should return [ result, offsetOfFollowingReply ]
@@ -255,7 +424,7 @@ function handleErrorReply(reply, offset) {
     ? "something bad happened: " + reply.substr(offset, crlfIndex - offset)
     : reply.substr(4, crlfIndex - 4);
 
-  fatal(errorMessage);
+  return [ "error", crlfIndex + CRLF_LENGTH ];
 }
 
 // See http://code.google.com/p/redis/wiki/ReplyTypes
@@ -300,33 +469,6 @@ function postProcessResults(command, result) {
   return result;
 }
 
-conn.onReceive = function(data) {
-  if (exports.debugMode) 
-    debug('< ' + data);
-
-  if (data.length == 0) 
-    fatal("empty response");
-
-  var offset = 0;
-
-  while (offset < data.length) {
-    var replyPrefix = data.charAt(offset);
-    var replyHandler = replyPrefixToHandler[replyPrefix];
-
-    if (!replyHandler) 
-      fatal("unknown prefix " + replyPrefix + " in reply @ offset " + offset);
-
-    var resultInfo = replyHandler(data, offset);
-    var result = resultInfo[0];
-    offset = resultInfo[1];
-
-    var callback = callbacks.shift();
-    if (callback && callback.cb) {
-      result = postProcessResults(callback.cmd, result);
-      callback.cb(result);
-    }
-  }
-};
 
 // Read this first: http://code.google.com/p/redis/wiki/SortCommand
 // options is an object which can have the following properties:
@@ -377,7 +519,7 @@ exports.sort = function(key, options, callback) {
   // We need received replies to match number of entries in `callbacks`.
 
   callbacks.push({ cb:callback, cmd:'sort' });
-}
+};
 
 // Close the connection.
 
@@ -389,13 +531,4 @@ exports.quit = function() {
 
   conn.send('quit' + CRLF);
   conn.close();
-}
-
-conn.onConnect = function() {
-  conn.setEncoding("utf8");
-}
-
-conn.onDisconnect = function(hadError) {
-  if (hadError) 
-    fatal("disconnected from redis server in error -- redis server up?");
-}
+};
