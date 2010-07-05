@@ -19,7 +19,7 @@
 // Maksim Lin <maksim.lin@ngv.vic.gov.au>
 
 
-export('connect', 'debugMode');
+export('connect', 'debugMode', '_inp');
 
 // debugMode:
 // We don't use print() or puts() immediately as they are asynchronous in Node;
@@ -85,6 +85,8 @@ function _connect(cb, args) {
   _out = new PrintWriter(conn.getOutputStream(), true);
   _inp =  new BufferedReader(new InputStreamReader(conn.getInputStream()));
 
+  //var thread = new java.lang.Thread(runnable,"redis-reader");
+  //        thread.setDaemon(true);
 
 }
 
@@ -307,11 +309,7 @@ function createCommandSender(commandName) {
 
     debug('> ' + cmd);
 
-    // Always push something, even if its null.
-    // We need received replies to match number of entries in `callbacks`.
-
-    //dont try to send anything yet...!
-    //conn.send(cmd);
+    _out.println(cmd);
   };
 }
 
@@ -456,7 +454,6 @@ exports.sort = function(key, options, callback) {
       fatal("connection is not open");
   }
 
-
   var cmd = 'sort ' + key;
 
   if (typeof(options) == 'object') {
@@ -490,10 +487,7 @@ exports.sort = function(key, options, callback) {
 
   conn.send(cmd);
 
-  // Always push something, even if its null.
-  // We need received replies to match number of entries in `callbacks`.
-
-  callbacks.push({ cb:callback, cmd:'sort' });
+  //todo read and return results
 };
 
 // Close the connection.
