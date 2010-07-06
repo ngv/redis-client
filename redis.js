@@ -40,15 +40,16 @@ function debug(data) {
 var {PrintWriter, BufferedReader, InputStreamReader} = Packages.java.io;
 
 var conn, _host, _port;
-var lastPrefix, lastHandler, lastChunk;
 var _out, _inp;
+var multiBulkCount;
 
-var chunks = [];
-var callbacks = [];
+var currentCmd = "";
 
 var CRLF = "\r\n";
+var CR = 13;
+var LF = 10;
 var CRLF_LENGTH = 2;
-
+var RES_TYPE_OFFSET = 1;
 
 
 /**
@@ -73,142 +74,13 @@ function _connect(cb, args) {
 
   debug("Creating a new connection!");
 
-  // clear chunks
-  chunks = [];
-
-  // clear temp storage
-  lastPrefix = lastHandler = lastChunk = null;
-
   // create connection and set encoding to UTF8
   conn = new Packages.java.net.Socket('localhost', 6379);
 
   _out = new PrintWriter(conn.getOutputStream(), true);
-  _inp =  new BufferedReader(new InputStreamReader(conn.getInputStream()));
-
-  //var thread = new java.lang.Thread(runnable,"redis-reader");
-  //        thread.setDaemon(true);
+  _inp = new InputStreamReader(conn.getInputStream());
 
 }
-
-/**
- * Process a chunk of data from Redis.
- *
- * NOTE: we cannot assume this chunk is a complete
- * or tidy Redis response.  Particularly in the case of
- * a Multi-Bulk response, this chunk may be any part of
- * a Redis value
- **/
-function processChunk(chunk) {
-
-  debug('< data received');
-  debug('< ' + chunk.length);
-  //debug('<<< ' + chunk);
-
-  if (chunk.length == 0) {
-    fatal("empty response");
-  }
-
-  // Is this beginning of a Redis response?
-  var startPrefix   = chunk.charAt(0);
-  var startHandler  = replyPrefixToHandler[startPrefix];
-
-  if(startHandler) {
-    processResponseStart(startPrefix, startHandler, chunk);
-  }
-
-  // add this chunk of data to our array
-  chunks.push(chunk);
-
-  // Is this the end of a response?
-  if( chunk.substr(chunk.length -2) == CRLF ) {
-    var responseSoFar = chunks.join('');
-
-    if( allPartsReceived(responseSoFar) ) {
-      processResponseEnd(responseSoFar);
-    }
-  }
-}
-
-/**
- * Save the response start for later, determine if
- * we should keep track of a multi-bulk response count.
- **/
-function processResponseStart(prefix, handler, chunk) {
-
-  // temporarily store response in case the next chunk received
-  // depends on this chunk
-  lastPrefix  = prefix;
-  lastHandler = handler;
-  lastChunk   = chunk;
-
-  // if the prefix denotes the start of a multi-bulk reply
-  // set a multiBulkCount so we know how many responses
-  // to expect and reset chunks
-  if(prefix == '*') {
-    // first CRLF
-    var firstBreak = chunk.indexOf(CRLF);
-    multiBulkCount = Number(chunk.substr(1, firstBreak));
-    debug('>> Resetting chunks.  Multibulk count is (' + multiBulkCount + ')');
-    chunks = [];
-  }
-}
-
-
-/**
- * Do some tidying up, and apply callbacks
- **/
-function processResponseEnd(data) {
-
-  debug('> End of Response');
-  delete(multiBulkCount);
-
-  // clear chunks
-  chunks = [];
-
-  var offset = 0;
-  while (offset < data.length) {
-    var callback = callbacks.shift();
-    var replyPrefix = data.charAt(offset);
-    var replyHandler = replyPrefixToHandler[replyPrefix];
-
-    if (!replyHandler) {
-      debug("Reply Handler not found, using previous data!");
-      replyHandler = lastHandler;
-      data = lastChunk + data;
-
-      delete(lastHandler);
-      delete(lastChunk);
-    }
-
-    var resultInfo = replyHandler(data, offset);
-    var result = resultInfo[0];
-    offset = resultInfo[1];
-
-    if (callback && callback.cb) {
-      result = postProcessResults(callback.cmd, result);
-      callback.cb(result);
-      chunks = [];
-    }
-  }
-}
-
-/**
- * Have we received all parts?
- **/
-function allPartsReceived(data) {
-  if(typeof multiBulkCount != 'undefined') {
-    var size = data.split(CRLF + '$').length - 1;
-    debug('> The current response size is (' + size + ')');
-
-    if(size < multiBulkCount) {
-      debug('> We havent received all of the parts yet!');
-      return false;
-    }
-  }
-
-  return true;
-}
-
 
 // Commands supported by Redis (as of June, 2009).
 // Note: 'sort' and 'quit' are handled as special cases.
@@ -289,11 +161,12 @@ function formatBulk(commandName, commandArgs, argCount) {
 function createCommandSender(commandName) {
   return function() {
 
+    currentCmd = cmd;
     var commandArgs = arguments;
 
     if (!conn.isConnected()) {
       debug('Connection is not open - attempting to reopen');
-      _connect();
+      _connect(); //FIXME: need to rem host & port if they are set so they are used here
     }
 
     // Format the command and send it.
@@ -309,7 +182,10 @@ function createCommandSender(commandName) {
 
     debug('> ' + cmd);
 
-    _out.println(cmd);
+    _out.print(cmd);
+    _out.flush();
+
+    return processResponse(_inp);
   };
 }
 
@@ -321,85 +197,128 @@ for (var commandName in inlineCommands)
 for (var bulkCommand in bulkCommands)
   exports[bulkCommand] = createCommandSender(bulkCommand);
 
-// All reply handlers are passed the full received data which may contain
-// multiple replies.  Each should return [ result, offsetOfFollowingReply ]
 
-function handleBulkReply(reply, offset) {
-  ++offset; // skip '$'
+/**
+ *
+ * @param {BufferedReadder} res response from redis server
+ * @returns
+ */
+function processResponse(responseBuffer) {
 
-  var crlfIndex = reply.indexOf(CRLF, offset);
-  var valueLength = parseInt(reply.substr(offset, crlfIndex - offset), 10);
+  debug('< data received' + responseBuffer);
 
-  if (valueLength == -1)
-    return [ null, crlfIndex + CRLF_LENGTH ];
+  // Read first char of Redis response to find out type of response?
+  var typePrefix =  String.fromCharCode(responseBuffer.read());
+  if ('-+$*:'.indexOf(typePrefix) < 0) {
+      fatal("invalid Redis type Prefix:"+typePrefix);
+  }
+  debug('<type char:'+typePrefix);
 
-  var value = reply.substr(crlfIndex + CRLF_LENGTH, valueLength);
+  var handler  = replyPrefixToHandler[typePrefix];
 
-  var nextOffset = crlfIndex   + CRLF_LENGTH +
-                   valueLength + CRLF_LENGTH;
+  if(typePrefix == '*') {
+    //TODO: return postProcessResults(responseBuffer);
+     return handler(responseBuffer);
+  } else {
+      return handler(responseBuffer); //TODO: processReponseEnd(handler());
+  }
 
-  return [ value, nextOffset ];
 }
 
-function handleMultiBulkReply(reply, offset) {
-  ++offset; // skip '*'
 
-  var crlfIndex = reply.indexOf(CRLF, offset);
-  var count = parseInt(reply.substr(offset, crlfIndex - offset), 10);
+// All reply handlers are passed the full received data which may contain
+// multiple replies.  Each should return [ result, offsetOfFollowingReply ]
+function handleBulkReply(responseBuffer) {
 
-  offset = crlfIndex + CRLF_LENGTH;
+  var valueLength = parseInt(readLine(responseBuffer, true), 10);
 
-  if (count === -1)
-    return [ null, offset ];
+  if (valueLength == -1) {
+      return [ null ];
+  }
+
+  var buf = java.lang.reflect.Array.newInstance(java.lang.Character.TYPE, valueLength);
+
+  responseBuffer.read(buf);
+
+  responseBuffer.read();responseBuffer.read(); //read out trailing CR+LF
+
+  var s = java.lang.String(buf);
+  debug("<s:"+s);
+  return [s];
+}
+
+function handleMultiBulkReply(responseBuffer) {
+
+  var count = parseInt(readLine(responseBuffer, true), 10);
+
+  debug('> Multibulk count is (' + count + ')');
+
+  if (count === -1) {
+      return [ null ];
+  }
 
   var entries = [];
 
   for (var i = 0; i < count; ++i) {
-    var bulkReply = handleBulkReply(reply, offset);
-    entries.push(bulkReply[0]);
-    offset = bulkReply[1];
+    responseBuffer.read(); //swallow intial "4" as handleBulkReply expects this
+    var bulkReply = handleBulkReply(responseBuffer);
+    entries = entries.concat(bulkReply);
   }
-
-  return [ entries, offset ];
+  return entries;
 }
 
-function handleSingleLineReply(reply, offset) {
-  ++offset; // skip '+'
-
-  var crlfIndex = reply.indexOf(CRLF, offset);
-  var value = reply.substr(offset, crlfIndex - offset);
+function handleSingleLineReply(responseBuffer) {
+  var line = readLine(responseBuffer, true);
 
   // Most single-line replies are '+OK' so convert such to a true value.
-
-  if (value === 'OK')
-    value = true;
-
-  return [ value, crlfIndex + CRLF_LENGTH ];
+  if (line === 'OK') {
+      value = true;
+  } else {
+      var value = line;
+  }
+  return [ value ];
 }
 
-function handleIntegerReply(reply, offset) {
-  ++offset; // skip ':'
-
-  var crlfIndex = reply.indexOf(CRLF, offset);
-
-  return [ parseInt(reply.substr(offset, crlfIndex - offset), 10),
-           crlfIndex + CRLF_LENGTH ];
+function handleIntegerReply(responseBuffer) {
+  return [parseInt(readLine(responseBuffer, true), 10)];
 }
 
-function handleErrorReply(reply, offset) {
-  ++offset; // skip '-'
+function handleErrorReply(reponseBuffer) {
+  var line = readLine(responseBuffer, true);
+  var errorMessage = (line.indexOf("ERR ") != 0)
+    ? ("something bad happened: " + line)
+    : line.substring(4, line.length - 4);
 
-  var crlfIndex = reply.indexOf(CRLF, offset);
+  return [ "error", errorMessage];
+}
 
-  var errorMessage = (reply.indexOf("ERR ") != 0)
-    ? "something bad happened: " + reply.substr(offset, crlfIndex - offset)
-    : reply.substr(4, crlfIndex - 4);
-
-  return [ "error", crlfIndex + CRLF_LENGTH ];
+/**
+ * Return a lien terminated by CRLF, but not including the CRLF chars.
+ *
+ * @param responseBuffer
+ * @returns {String}
+ */
+function readLine(responseBuffer, c) {
+    var char = responseBuffer.read();
+    var line = java.lang.StringBuilder();
+    while (true) {
+        if (char == CR) {
+            var char2 = responseBuffer.read();
+            if  (char2 == LF) {
+                break;
+            } else {
+                c ? line.append(String.fromCharCode(char)) : line.append(char);
+                c ? line.append(String.fromCharCode(char2)): line.append(char2);
+            }
+        } else {
+            c ? line.append(String.fromCharCode(char)) : line.append(char);
+            char = responseBuffer.read();
+        }
+    }
+    return line.toString();
 }
 
 // See http://code.google.com/p/redis/wiki/ReplyTypes
-
 var replyPrefixToHandler = {
   '$': handleBulkReply,
   '*': handleMultiBulkReply,
@@ -411,8 +330,8 @@ var replyPrefixToHandler = {
 // INFO output is an object with properties for each server metadatum.
 // KEYS output is a list (which is more intuitive than a ws-delimited string).
 
-function postProcessResults(command, result) {
-  switch (command) {
+function postProcessResults(result) {
+  switch (currentCmd) {
   case 'info':
     var infoObject = {};
 
@@ -499,6 +418,6 @@ exports.quit = function() {
 
   debug('> quit');
 
-  conn.send('quit' + CRLF);
+  _out.write('quit' + CRLF);
   conn.close();
 };
