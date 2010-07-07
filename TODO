@@ -1,2 +1,3 @@
 - fix node.js based unit tests to work with new implementation
 - handle reconnecting sockets gracefully (if possible)
+- make thread safe ??
