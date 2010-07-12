@@ -4,15 +4,34 @@ A Redis client implementation which runs on RIngojs.
 
 This project lets you access a Redis instance using server-side JavaScript.
 
+h2. Author
+
+Maksim Lin <maksim.lin@ngv.vic.gov.au>
+
 h2. Status
 
 
 * The full Redis command specification for version 1.2 of Redis is supported *minus* hashes.
 * See the TODO file for more.
 
-h2. Author
 
-Maksim Lin <maksim.lin@ngv.vic.gov.au>
+h1. Usage
+
+
+To connect:
+@var r = require('ngv/redis');@
+
+@r.connect();@
+
+To set a key:
+@r.set('foo', 'bar');@
+
+@r.get('foo');@
+
+
+To disconnect:
+@r.quit();@
+
 
 
 h1. License
