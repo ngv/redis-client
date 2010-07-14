@@ -13,37 +13,43 @@ var TEST_DB_NUMBER_FOR_MOVE = 14;
 
 var assert = require('assert');
 
-var redis = require('ngv/redis');
+var redis = new (require('ngv/redis').Redis) ();
 
 exports.setUp = function () {
-	 
-	assert.isTrue(redis.connect());
-	
+
+	redis.connect();
+
 	assert.isTrue(redis.select(TEST_DB_NUMBER_FOR_MOVE));
 	assert.strictEqual(redis.dbsize(), 0);
-	 
+
 	assert.isTrue(redis.select(TEST_DB_NUMBER));
 	assert.strictEqual(redis.dbsize(), 0);
-	 
+
 };
 
-exports.tearDown = function () {	
-	assert.isTrue(redis.flushdb()); 
+exports.tearDown = function () {
+
+	assert.isTrue(redis.flushdb());
 	assert.strictEqual(redis.dbsize(), 0);
 };
+
 
 exports.testSet = function() {
 	assert.isTrue(redis.set('foo', 'bar'));
-	assert.isTrue(redis.set('baz', 'buz'));
-}
+};
 
 exports.testSetNX = function() {
+    assert.isTrue(redis.set('foo', 'bar'));
 	assert.strictEqual(redis.setnx('foo', 'quux'), 0);  // fails when already set
 	assert.strictEqual(redis.setnx('boo', 'apple'), 1 );  // no such key already so OK
-}
+};
 
-exports.testGet = 	function() {
-	assert.strictEqual(redis.get('foo'), 'bar');
-	assert.strictEqual(redis.get('boo'), 'apple');
-}
+
+exports.testGet = function() {
+   assert.isTrue(redis.set('foo', 'bar'));
+   assert.equal(redis.get('foo'), 'bar');
+	assert.notEqual(redis.get('foo'), 'apple');
+	assert.isNull(redis.get('notthere'));
+};
+
 
