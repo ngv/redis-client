@@ -48,8 +48,17 @@ exports.testSetNX = function() {
 exports.testGet = function() {
    assert.isTrue(redis.set('foo', 'bar'));
    assert.equal(redis.get('foo'), 'bar');
-	assert.notEqual(redis.get('foo'), 'apple');
-	assert.isNull(redis.get('notthere'));
+   assert.notEqual(redis.get('foo'), 'apple');
+   assert.isNull(redis.get('notthere'));
 };
+
+exports.testMget = function() {
+	assert.isTrue(redis.set('foo', 'bar'));
+	assert.isTrue(redis.set('boo', 'apple'));
+	
+	var values = redis.mget('foo', 'boo');
+	assert.equal('bar', values[0]);
+	assert.equal('apple', values[1]);
+}
 
 
