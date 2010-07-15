@@ -61,4 +61,27 @@ exports.testMget = function() {
 	assert.equal('apple', values[1]);
 }
 
+exports.testGetSet = function() {
+	assert.isTrue(redis.set('foo', 'bar'));
+	var prevValue = redis.getset('foo', 'fuzz');
+    assert.equal('bar', prevValue);
+}
 
+exports.testInfo = function() {
+	var info = redis.info(); 
+	// The INFO command is special; its output is parsed into an object.
+
+	assert.isTrue(info instanceof Object);
+
+	assert.isTrue(info.hasOwnProperty('redis_version'));
+	assert.isTrue(info.hasOwnProperty('connected_clients'));
+	assert.isTrue(info.hasOwnProperty('uptime_in_seconds'));
+
+    // Some values are always numbers.  Our redis client
+    // will magically (ahem) convert these strings to actual
+    // number types.  Make sure it does this.
+
+    assert.equal(typeof(info.uptime_in_seconds), 'number');
+    assert.equal(typeof(info.connected_clients), 'number');
+}
+		
