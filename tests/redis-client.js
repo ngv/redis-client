@@ -85,3 +85,21 @@ exports.testInfo = function() {
     assert.equal(typeof(info.connected_clients), 'number');
 }
 		
+
+exports.testSadd = function() {
+	// create set0
+	assert.isTrue(redis.sadd('set0', 'member0'));
+
+	// fails since it's already a member
+	assert.isFalse(redis.sadd('set0', 'member0'));
+}
+
+
+exports.testSismember = function() {
+	
+	assert.isTrue(redis.sadd('set0', 'member0'));
+
+	assert.isTrue(redis.sismember('set0', 'member0'));
+	assert.isFalse(redis.sismember('set0', 'member1'));
+}
+
