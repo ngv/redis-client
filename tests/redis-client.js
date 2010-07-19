@@ -40,8 +40,8 @@ exports.testSet = function() {
 
 exports.testSetNX = function() {
     assert.isTrue(redis.set('foo', 'bar'));
-	assert.strictEqual(redis.setnx('foo', 'quux'), 0);  // fails when already set
-	assert.strictEqual(redis.setnx('boo', 'apple'), 1 );  // no such key already so OK
+	assert.isFalse(redis.setnx('foo', 'quux'));  // fails when already set
+	assert.isTrue(redis.setnx('boo', 'apple'));  // no such key already so OK
 };
 
 
