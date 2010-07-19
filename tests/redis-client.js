@@ -55,7 +55,7 @@ exports.testGet = function() {
 exports.testMget = function() {
 	assert.isTrue(redis.set('foo', 'bar'));
 	assert.isTrue(redis.set('boo', 'apple'));
-	
+
 	var values = redis.mget('foo', 'boo');
 	assert.equal('bar', values[0]);
 	assert.equal('apple', values[1]);
@@ -68,7 +68,7 @@ exports.testGetSet = function() {
 }
 
 exports.testInfo = function() {
-	var info = redis.info(); 
+	var info = redis.info();
 	// The INFO command is special; its output is parsed into an object.
 
 	assert.isTrue(info instanceof Object);
@@ -84,7 +84,7 @@ exports.testInfo = function() {
     assert.equal(typeof(info.uptime_in_seconds), 'number');
     assert.equal(typeof(info.connected_clients), 'number');
 }
-		
+
 
 exports.testSadd = function() {
 	// create set0
@@ -94,9 +94,14 @@ exports.testSadd = function() {
 	assert.isFalse(redis.sadd('set0', 'member0'));
 }
 
+exports.testIncr = function() {
+
+    assert.equal(redis.incr('counter'), 1);
+    assert.equal(redis.incr('counter'), 2);
+}
 
 exports.testSismember = function() {
-	
+
 	assert.isTrue(redis.sadd('set0', 'member0'));
 
 	assert.isTrue(redis.sismember('set0', 'member0'));
