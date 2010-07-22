@@ -44,6 +44,14 @@ exports.testSetNX = function() {
 	assert.isTrue(redis.setnx('boo', 'apple'));  // no such key already so OK
 };
 
+exports.testZaddRemCard = function() {
+	assert.isTrue(redis.zadd('foo', '2', 'bar'));
+	assert.isFalse(redis.zadd('foo', '3', 'bar'));
+	assert.equal(redis.zcard('foo'), 1);
+	assert.isTrue(redis.zadd('foo', '1', 'abc'));
+	assert.equal(redis.zcard('foo'), 2);
+};
+
 
 exports.testGet = function() {
    assert.isTrue(redis.set('foo', 'bar'));
