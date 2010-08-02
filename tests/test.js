@@ -53,18 +53,20 @@ exports.testSetNX = function() {
 };
 
 exports.testZCommands = function() {
-//	assert.isTrue(redis.zadd('foo', '2', 'bar'));
-//	assert.isFalse(redis.zadd('foo', '3', 'bar'));
-//	assert.equal(redis.zcard('foo'), 1);
-//
-//	assert.isTrue(redis.zadd('foo', '1', 'abc'));
-//	assert.equal(redis.zcard('foo'), 2);
-//
-//	assert.isTrue(redis.zrem('foo', 'abc'));
-//	assert.equal(redis.zcard('foo'), 1);
-//
-//	assert.equal(redis.zscore('foo', 'bar'), 3);
-//	assert.equal(redis.zincrby('foo', '1', 'abc'), 4);
+	assert.isTrue(redis.zadd('foo', 2, 'bar'));
+	assert.isFalse(redis.zadd('foo', 3, 'bar'));
+	assert.equal(redis.zscore('foo', 'bar'), 3);
+	assert.equal(redis.zcard('foo'), 1);
+
+
+	assert.isTrue(redis.zadd('foo', 1, 'abc'));
+	assert.equal(redis.zcard('foo'), 2);
+
+	assert.isTrue(redis.zrem('foo', 'abc'));
+	assert.equal(redis.zcard('foo'), 1);
+
+	assert.equal(redis.zscore('foo', 'bar'), 3);
+	assert.equal(redis.zincrby('foo', 1, 'bar'), 4);
 
 
 };
