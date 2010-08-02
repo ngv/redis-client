@@ -133,6 +133,20 @@ exports.testSismember = function() {
 	assert.isFalse(redis.sismember('set0', 'member1'));
 }
 
-//exports.testSort = function() {
-//
-//}
+exports.testSort = function() {
+    assert.isTrue(redis.sadd('set0', 'member0'));
+    assert.isTrue(redis.sadd('set0', 'member1'));
+    assert.isTrue(redis.sadd('set0', 'member2'));
+    assert.isTrue(redis.sadd('set0', 'member3'));
+
+    var sorted =redis.sort('set0', {});
+    assert.equal(sorted.length, 4);
+    assert.equal(sorted.constructor, Array);
+
+    assert.equal(redis.sort('set0', {limit: [0,2]}).length, 2);
+
+    var lexSorted = redis.sort('set0', {lexicographically: true});
+    assert.equal(lexSorted[0], 'member3');
+    assert.equal(lexSorted[3], 'member0');
+
+}
