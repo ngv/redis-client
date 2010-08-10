@@ -13,9 +13,9 @@ var TEST_DB_NUMBER_FOR_MOVE = 14;
 
 var assert = require('assert');
 
-var redis = new (require('ngv/redis').Redis) ();
+var redis = new (require('ngv/redis').Redis)();
 
-exports.setUp = function () {
+exports.setUp = function() {
 
 	redis.connect();
 
@@ -27,19 +27,19 @@ exports.setUp = function () {
 
 };
 
-exports.tearDown = function () {
+exports.tearDown = function() {
 
 	assert.isTrue(redis.flushdb());
 	assert.strictEqual(redis.dbsize(), 0);
 };
 
 exports.testSelect = function() {
-    assert.isTrue(redis.set('foo', 'bar'));
-    assert.isTrue(redis.select(TEST_DB_NUMBER_FOR_MOVE));
-    assert.equal(redis.dbsize(), 0);
+	assert.isTrue(redis.set('foo', 'bar'));
+	assert.isTrue(redis.select(TEST_DB_NUMBER_FOR_MOVE));
+	assert.equal(redis.dbsize(), 0);
 
-    assert.isTrue(redis.select(TEST_DB_NUMBER));
-    assert.equal(redis.dbsize(), 1);
+	assert.isTrue(redis.select(TEST_DB_NUMBER));
+	assert.equal(redis.dbsize(), 1);
 }
 
 exports.testSet = function() {
@@ -47,9 +47,9 @@ exports.testSet = function() {
 };
 
 exports.testSetNX = function() {
-    assert.isTrue(redis.set('foo', 'bar'));
-	assert.isFalse(redis.setnx('foo', 'quux'));  // fails when already set
-	assert.isTrue(redis.setnx('boo', 'apple'));  // no such key already so OK
+	assert.isTrue(redis.set('foo', 'bar'));
+	assert.isFalse(redis.setnx('foo', 'quux')); // fails when already set
+	assert.isTrue(redis.setnx('boo', 'apple')); // no such key already so OK
 };
 
 exports.testZCommands = function() {
@@ -57,7 +57,6 @@ exports.testZCommands = function() {
 	assert.isFalse(redis.zadd('foo', 3, 'bar'));
 	assert.equal(redis.zscore('foo', 'bar'), 3);
 	assert.equal(redis.zcard('foo'), 1);
-
 
 	assert.isTrue(redis.zadd('foo', 1, 'abc'));
 	assert.equal(redis.zcard('foo'), 2);
@@ -68,15 +67,13 @@ exports.testZCommands = function() {
 	assert.equal(redis.zscore('foo', 'bar'), 3);
 	assert.equal(redis.zincrby('foo', 1, 'bar'), 4);
 
-
 };
 
-
 exports.testGet = function() {
-   assert.isTrue(redis.set('foo', 'bar'));
-   assert.equal(redis.get('foo'), 'bar');
-   assert.notEqual(redis.get('foo'), 'apple');
-   assert.isNull(redis.get('notthere'));
+	assert.isTrue(redis.set('foo', 'bar'));
+	assert.equal(redis.get('foo'), 'bar');
+	assert.notEqual(redis.get('foo'), 'apple');
+	assert.isNull(redis.get('notthere'));
 };
 
 exports.testMget = function() {
@@ -91,7 +88,7 @@ exports.testMget = function() {
 exports.testGetSet = function() {
 	assert.isTrue(redis.set('foo', 'bar'));
 	var prevValue = redis.getset('foo', 'fuzz');
-    assert.equal('bar', prevValue);
+	assert.equal('bar', prevValue);
 }
 
 exports.testInfo = function() {
@@ -104,14 +101,13 @@ exports.testInfo = function() {
 	assert.isTrue(info.hasOwnProperty('connected_clients'));
 	assert.isTrue(info.hasOwnProperty('uptime_in_seconds'));
 
-    // Some values are always numbers.  Our redis client
-    // will magically (ahem) convert these strings to actual
-    // number types.  Make sure it does this.
+	// Some values are always numbers. Our redis client
+	// will magically (ahem) convert these strings to actual
+	// number types. Make sure it does this.
 
-    assert.equal(typeof(info.uptime_in_seconds), 'number');
-    assert.equal(typeof(info.connected_clients), 'number');
+	assert.equal(typeof (info.uptime_in_seconds), 'number');
+	assert.equal(typeof (info.connected_clients), 'number');
 }
-
 
 exports.testSadd = function() {
 	// create set0
@@ -123,8 +119,8 @@ exports.testSadd = function() {
 
 exports.testIncr = function() {
 
-    assert.equal(redis.incr('counter'), 1);
-    assert.equal(redis.incr('counter'), 2);
+	assert.equal(redis.incr('counter'), 1);
+	assert.equal(redis.incr('counter'), 2);
 }
 
 exports.testSismember = function() {
@@ -136,19 +132,23 @@ exports.testSismember = function() {
 }
 
 exports.testSort = function() {
-    assert.isTrue(redis.sadd('set0', 'member0'));
-    assert.isTrue(redis.sadd('set0', 'member1'));
-    assert.isTrue(redis.sadd('set0', 'member2'));
-    assert.isTrue(redis.sadd('set0', 'member3'));
+	assert.isTrue(redis.sadd('set0', 'member0'));
+	assert.isTrue(redis.sadd('set0', 'member1'));
+	assert.isTrue(redis.sadd('set0', 'member2'));
+	assert.isTrue(redis.sadd('set0', 'member3'));
 
-    var sorted =redis.sort('set0', {});
-    assert.equal(sorted.length, 4);
-    assert.equal(sorted.constructor, Array);
+	var sorted = redis.sort('set0', {});
+	assert.equal(sorted.length, 4);
+	assert.equal(sorted.constructor, Array);
 
-    assert.equal(redis.sort('set0', {limit: [0,2]}).length, 2);
+	assert.equal(redis.sort('set0', {
+		limit : [ 0, 2 ]
+	}).length, 2);
 
-    var lexSorted = redis.sort('set0', {lexicographically: true});
-    assert.equal(lexSorted[0], 'member3');
-    assert.equal(lexSorted[3], 'member0');
+	var lexSorted = redis.sort('set0', {
+		lexicographically : true
+	});
+	assert.equal(lexSorted[0], 'member3');
+	assert.equal(lexSorted[3], 'member0');
 
 }
