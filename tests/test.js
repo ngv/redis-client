@@ -1,4 +1,4 @@
-// Test suite for node (ECMAScript) redis client.
+// Test suite for the javascript ringo redis client.
 //
 // NOTE: you must have started a redis-server instance on (the default)
 // 127.0.0.1:6379 prior to running this test suite.

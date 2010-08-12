@@ -1,8 +1,10 @@
 h1. redis-ringojs-client
 
-A Redis client implementation which runs on RIngojs.
+A Redis client implementation which runs on Ringojs.
 
 This project lets you access a Redis instance using server-side JavaScript.
+
+This started as a port of the Node Redis client [http://github.com/britg/redis-node-client] but has since been almost completely re-written given the very different, synchronous nature of ringojs. 
 
 h2. Author
 
@@ -19,18 +21,18 @@ h1. Usage
 
 
 To connect:
-@var r = require('ngv/redis');@
+@var redis = new (require('ngv/redis').Redis)();@
 
-@r.connect();@
+@redis.connect();@
 
 To set a key:
-@r.set('foo', 'bar');@
+@redis.set('foo', 'bar');@
 
-@r.get('foo');@
+@redis.get('foo');@
 
 
 To disconnect:
-@r.quit();@
+@redis.quit();@
 
 
 
