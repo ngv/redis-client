@@ -1,0 +1,8 @@
+{
+    "name": "redis-ringojs-client",
+    "version": "0.0.1",
+    "description": "Redis Client implemention",
+    "keywords": ["database", "keyvalue", "redis"],
+    "author": "NGV (http://ngv.vic.gov.au/) <webmaster@ngv.vic.gov.au>"
+}
+
