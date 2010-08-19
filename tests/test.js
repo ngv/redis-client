@@ -162,3 +162,7 @@ exports.testFindCRLF = function() {
   var testStream = new Packages.java.io.StringBufferInputStream('testfind\r\n');
   assert.equal(require('ngv/redis').readToCRLF(testStream), 'testfind');
 };
+
+exports.testConfigCmd = function() {
+	//TODO assert.isNotUndefined(redis.config('get timeout'));
+}
