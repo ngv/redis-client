@@ -1,5 +1,5 @@
 {
-    "name": "redis-ringojs-client",
+    "name": "redis-client",
     "version": "0.0.1",
     "description": "Redis Client implemention",
     "keywords": ["database", "keyvalue", "redis"],
